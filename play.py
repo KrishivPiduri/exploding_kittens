@@ -2,8 +2,6 @@ import random
 import numpy as np
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Flatten
-from tensorflow.keras.optimizers import Adam
-from collections import deque
 
 id2card = {
     1: "Attack",
@@ -28,7 +26,7 @@ class ExplodingKittensEnv:
         self.deck = []
         self.players = [[], []]
         self.players_known_future = [[], []]
-        self.players_last_action = [-1, -1]
+        self.players_last_action = [0, 1]
         self.current_player = 0
         self.game_over = False
         self.winner = None
@@ -38,9 +36,10 @@ class ExplodingKittensEnv:
     def reset(self):
         self.deck = self._create_deck()
         random.shuffle(self.deck)
-        self.players = [self._draw_cards(8) for _ in range(2)]
+        self.players = [self._draw_cards(8), self._draw_cards(8)]
         self.deck.append(card2id['Exploding Kitten'])
         random.shuffle(self.deck)
+        self.players_known_future=[[], []]
         self.current_player = 0
         self.game_over = False
         self.winner = None
@@ -213,13 +212,13 @@ def play_game_against_ai(env, ai_player, ai_noper_model, ai_favor_model):
         current_player_hand = env.players[env.current_player]
 
         if env.current_player == 0:  # Human player (Player 1)
-            print("\nYour hand:", [id2card[i] for i in current_player_hand])
+            print("\nYour hand:", sorted([id2card[i] for i in current_player_hand]))
             print(f"Cards left in deck: {len(env.deck)}")
             print(f"Known future cards: {env.players_known_future[env.current_player]}")
 
             # Prompt user for their action
             valid_actions = current_player_hand + [0]  # Include the 'pass' action (0)
-            print(f"Available actions: {', '.join([id2card.get(action, 'Pass') for action in valid_actions])}")
+            print(f"Available actions: {', '.join(sorted([id2card.get(action, 'Pass') for action in valid_actions]))}")
 
             action = input(f"Choose your action (enter card name or 'pass'): ")
             if action == 'pass':
@@ -252,17 +251,21 @@ def play_game_against_ai(env, ai_player, ai_noper_model, ai_favor_model):
             state_input = preprocess_state(state).reshape(1, -1)  # Reshape to (1, -1)
             action_values = []
             for ind, i in enumerate(ai_player.predict(state_input)[0]):
-                if (6 <= ind <= 10):
-                    if list(preprocess_state(env._get_state()))[ind-1] >= 2:
+                if 6 <= ind <= 10:
+                    if current_player_hand.count(ind) >= 2:
                         action_values.append(i)
                     else:
+                        if ind==6:
+                            print("Rainbow-Ralphing Cat")
                         action_values.append(float('-inf'))
                 else:
                     if ind in current_player_hand:
                         action_values.append(i)
                     else:
                         action_values.append(float('-inf'))
+            print(action_values)
             action = np.argmax(action_values)  # Select the action with the highest predicted value
+            print(action)
             print(f"AI chose: {id2card.get(action, 'Pass')}")
             nope = False
             # Ask the human player if they want to "Nope" the action
@@ -270,7 +273,7 @@ def play_game_against_ai(env, ai_player, ai_noper_model, ai_favor_model):
                 print("\nAI is about to take an action.")
                 nope_action = input(
                     f"Do you want to 'Nope' the action '{id2card.get(action, 'Pass')}'? (y/n): ").strip().lower()
-                print(f"Cards left in deck: {len(env.deck)}")
+                print(f"\nAI is about to take an action: {id2card.get(action, 'Pass')}")
                 nope = nope_action == 'y'
 
             # If the AI plays the "Favor" card
